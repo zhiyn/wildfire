@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alberta Historical Wildfire Explorer</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Esri-Leaflet (Alberta ArcGIS MapServer overlays) -->
+  <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header class="brand">
+        <div class="flame" aria-hidden="true">🔥</div>
+        <div>
+          <h1>Alberta Wildfire Explorer</h1>
+          <p class="sub">Historical wildfire GIS · Government of Alberta open data</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <label class="field-label" for="yearSelect">Wildfire year</label>
+        <select id="yearSelect" disabled>
+          <option>Loading…</option>
+        </select>
+        <div class="year-nav">
+          <button id="prevYear" title="Previous year" disabled>‹</button>
+          <button id="playBtn" title="Play through years" disabled>▶ Play</button>
+          <button id="nextYear" title="Next year" disabled>›</button>
+        </div>
+        <label class="layer-row hist-toggle">
+          <input type="checkbox" id="histToggle" checked>
+          <span>Show historical fires</span>
+        </label>
+      </section>
+
+      <section class="panel stats" id="statsPanel">
+        <div class="stat">
+          <span class="stat-num" id="statFires">—</span>
+          <span class="stat-label">wildfires</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="statArea">—</span>
+          <span class="stat-label">hectares burned</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="statLargest">—</span>
+          <span class="stat-label">largest fire (ha)</span>
+        </div>
+      </section>
+
+      <section class="panel" id="riskPanel">
+        <h2 class="panel-title">⚠ 2026 fire-risk forecast</h2>
+        <label class="layer-row">
+          <input type="checkbox" id="riskToggle" checked>
+          <span>Show predicted hotspots</span>
+        </label>
+        <div class="risk-scale" aria-hidden="true"><span>lower</span><i></i><span>higher</span></div>
+        <p class="hint" id="riskCount">…</p>
+        <p class="hint risk-note">Where fires have historically clustered, recent years weighted. Not a weather forecast.</p>
+      </section>
+
+      <section class="panel" id="patrolPanel">
+        <h2 class="panel-title">🚁 Drone patrol <span class="sim-badge">SIM</span></h2>
+        <button id="patrolBtn" class="patrol-btn">🚁 Deploy patrol</button>
+        <p class="hint">Auto-routes a drone fleet over the ⚠ hotspots to scan for fire and stream detections to the command center. Simulation over historical data.</p>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel-title">Wildfire cause</h2>
+        <ul id="legend" class="legend"></ul>
+        <p class="legend-note" id="emberNote">Extinguished / burned out (during season playback)</p>
+        <p class="hint">Flame size ∝ area burned. Click a fire for details.</p>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel-title">Base map</h2>
+        <div id="baseLayers" class="layer-list"></div>
+        <h2 class="panel-title" style="margin-top:14px">Alberta layers</h2>
+        <div id="overlayLayers" class="layer-list"></div>
+      </section>
+
+      <footer class="src">
+        <p>Wildfire data: <a href="https://open.alberta.ca/opendata/wildfire-data" target="_blank" rel="noopener">open.alberta.ca</a></p>
+        <p>Base layers: Alberta Geospatial Services Platform (ATS, NTS, municipalities, hydrography) &amp; OpenStreetMap</p>
+        <p id="dataMeta" class="meta"></p>
+      </footer>
+    </aside>
+
+    <main id="map">
+      <div id="timeline" class="timeline" hidden>
+        <div class="tl-top">
+          <button id="tlPlay" class="tl-play" title="Play the fire season">▶</button>
+          <div class="tl-readout">
+            <span id="tlDate">Dec 31</span>
+            <span class="tl-sep">·</span>
+            <span id="tlCount">0</span> fires by this date
+            <span id="tlYear" class="tl-year"></span>
+          </div>
+          <button id="tlReset" class="tl-reset" title="Show the whole year">Full year ⟲</button>
+        </div>
+        <div class="tl-chartwrap">
+          <svg id="tlSvg" class="tl-svg" preserveAspectRatio="none" viewBox="0 0 366 100"></svg>
+          <div id="tlCursor" class="tl-cursor"></div>
+          <input id="tlRange" class="tl-range" type="range" min="1" max="366" value="366" step="1" aria-label="Day of year" />
+        </div>
+        <div class="tl-axis">
+          <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+          <span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+        </div>
+      </div>
+
+      <div id="commandCenter" class="command-center" hidden>
+        <div class="cc-head">
+          <span class="cc-title">◉ COMMAND CENTER <span class="sim-badge">SIM</span></span>
+          <span class="cc-clock" id="ccClock">T+00:00:00</span>
+          <button class="cc-recall" id="ccRecall" title="Recall all drones">Recall</button>
+        </div>
+        <div class="cc-stats">
+          <span><b id="ccDetections">0</b> detections</span>
+          <span><b id="ccZones">0</b> zones patrolled</span>
+          <label class="cc-speed">speed <input type="range" id="ccSpeed" min="0.5" max="4" step="0.5" value="1"></label>
+        </div>
+        <div class="cc-drones" id="ccDrones"></div>
+        <div class="cc-feed-title">Live detection feed</div>
+        <div class="cc-feed" id="ccFeed"></div>
+      </div>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

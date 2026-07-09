@@ -1,0 +1,10 @@
+{
+  "name": "alberta-wildfire-map",
+  "version": "1.0.0",
+  "description": "Web app to explore Alberta historical wildfire GIS data by year over Alberta base layers (ATS, NTS, cities, roads, lakes).",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
